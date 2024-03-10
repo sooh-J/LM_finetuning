@@ -17,20 +17,33 @@ After fine-tuning the model you can also share your adapters on the 🤗 Hub and
 First, run the cells below to install the requirements:
 """
 
-!pip install -q bitsandbytes datasets accelerate loralib
-!pip install -q git+https://github.com/huggingface/transformers.git@main git+https://github.com/huggingface/peft.git
+# !pip install -q bitsandbytes datasets accelerate loralib
+# !pip install -q git+https://github.com/huggingface/transformers.git@main git+https://github.com/huggingface/peft.git
 
 """### Model loading
 
 Here let's load the `opt-6.7b` model, its weights in half-precision (float16) are about 13GB on the Hub! If we load them in 8-bit we would require around 7GB of memory instead.
 """
 
+
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import torch
 import torch.nn as nn
 import bitsandbytes as bnb
 from transformers import AutoTokenizer, AutoConfig, AutoModelForCausalLM
+from peft import LoraConfig, get_peft_model
+import transformers
+from datasets import load_dataset
+
+config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    target_modules=["q_proj", "v_proj"],
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
+
 
 model = AutoModelForCausalLM.from_pretrained(
     "facebook/opt-6.7b",
@@ -77,24 +90,14 @@ def print_trainable_parameters(model):
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
-from peft import LoraConfig, get_peft_model
 
-config = LoraConfig(
-    r=16,
-    lora_alpha=32,
-    target_modules=["q_proj", "v_proj"],
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM"
-)
 
 model = get_peft_model(model, config)
 print_trainable_parameters(model)
 
 """### Training"""
 
-import transformers
-from datasets import load_dataset
+
 data = load_dataset("Abirate/english_quotes")
 data = data.map(lambda samples: tokenizer(samples['quote']), batched=True)
 
@@ -118,39 +121,39 @@ trainer.train()
 
 """## Share adapters on the 🤗 Hub"""
 
-from huggingface_hub import notebook_login
+# from huggingface_hub import notebook_login
 
-notebook_login()
+# notebook_login()
 
-model.push_to_hub("ybelkada/opt-6.7b-lora", use_auth_token=True)
+# model.push_to_hub("ybelkada/opt-6.7b-lora", use_auth_token=True)
 
-"""## Load adapters from the Hub
+# """## Load adapters from the Hub
 
-You can also directly load adapters from the Hub using the commands below:
-"""
+# You can also directly load adapters from the Hub using the commands below:
+# """
 
-import torch
-from peft import PeftModel, PeftConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# import torch
+# from peft import PeftModel, PeftConfig
+# from transformers import AutoModelForCausalLM, AutoTokenizer
 
-peft_model_id = "ybelkada/opt-6.7b-lora"
-config = PeftConfig.from_pretrained(peft_model_id)
-model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path, return_dict=True, load_in_8bit=True, device_map='auto')
-tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
+# peft_model_id = "ybelkada/opt-6.7b-lora"
+# config = PeftConfig.from_pretrained(peft_model_id)
+# model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path, return_dict=True, load_in_8bit=True, device_map='auto')
+# tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
 
-# Load the Lora model
-model = PeftModel.from_pretrained(model, peft_model_id)
+# # Load the Lora model
+# model = PeftModel.from_pretrained(model, peft_model_id)
 
-"""## Inference
+# """## Inference
 
-You can then directly use the trained model or the model that you have loaded from the 🤗 Hub for inference as you would do it usually in `transformers`.
-"""
+# You can then directly use the trained model or the model that you have loaded from the 🤗 Hub for inference as you would do it usually in `transformers`.
+# """
 
-batch = tokenizer("Two things are infinite: ", return_tensors='pt')
+# batch = tokenizer("Two things are infinite: ", return_tensors='pt')
 
-with torch.cuda.amp.autocast():
-  output_tokens = model.generate(**batch, max_new_tokens=50)
+# with torch.cuda.amp.autocast():
+#   output_tokens = model.generate(**batch, max_new_tokens=50)
 
-print('\n\n', tokenizer.decode(output_tokens[0], skip_special_tokens=True))
+# print('\n\n', tokenizer.decode(output_tokens[0], skip_special_tokens=True))
 
-"""As you can see by fine-tuning for few steps we have almost recovered the quote from Albert Einstein that is present in the [training data](https://huggingface.co/datasets/Abirate/english_quotes)."""
+# """As you can see by fine-tuning for few steps we have almost recovered the quote from Albert Einstein that is present in the [training data](https://huggingface.co/datasets/Abirate/english_quotes)."""
